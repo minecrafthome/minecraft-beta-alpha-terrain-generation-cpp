@@ -1,0 +1,13 @@
+{
+  "enabled": "true",
+  "extends": ["config:base"],
+  "masterIssue": "true",
+  "masterIssueAutoclose": "true",
+  "packageRules": [
+    {
+      "automerge": "true", 
+      "updateTypes": ["digest", "minor", "patch", "pin"]
+    }
+  ],
+  "pinDigests": "true"
+}
