@@ -197,9 +197,9 @@ static inline void simplexNoise(double **buffer, double chunkX, double chunkZ, i
             // Work out the hashed gradient indices of the three simplex corners
             uint32_t ii = (uint32_t) xHairy & 0xffu;
             uint32_t jj = (uint32_t) zHairy & 0xffu;
-            uint8_t gi0 = permutations[ii + permutations[jj]] % 12u;
-            uint8_t gi1 = permutations[ii + offsetSecondCornerX + permutations[jj + offsetSecondCornerZ]] % 12u;
-            uint8_t gi2 = permutations[ii + 1 + permutations[jj + 1]] % 12u;
+            uint8_t gi0 = permutations[(uint16_t) (ii + permutations[jj]) & 0xffu] % 12u;
+            uint8_t gi1 = permutations[(uint16_t) (ii + offsetSecondCornerX + permutations[(uint16_t) (jj + offsetSecondCornerZ) & 0xffu]) & 0xffu] % 12u;
+            uint8_t gi2 = permutations[(uint16_t) (ii + 1 + permutations[(uint16_t) (jj + 1) & 0xffu]) & 0xffu] % 12u;
 
             // Calculate the contribution from the three corners
             double t0 = 0.5 - x0 * x0 - y0 * y0;
@@ -326,15 +326,6 @@ BiomeResult *BiomeWrapper(uint64_t worldSeed, int32_t chunkX, int32_t chunkZ) {
     return biomes;
 }
 
-static inline void printBiomes(uint64_t worldSeed, int32_t chunkX, int32_t chunkZ) {
-    Biomes *biomes = BiomeWrapper(worldSeed, chunkX, chunkZ)->biomes;
-    for (int i = 0; i < 16 * 16; ++i) {
-        std::cout << biomesNames[biomes[i]] << " ";
-    }
-    std::cout << std::endl;
-}
-
-
 static inline double lerp(double x, double a, double b) {
     return a + x * (b - a);
 }
@@ -460,7 +451,7 @@ static inline void generateFixedPermutations(double **buffer, double x, double z
         if (xCoord < (double) clampedXCoord) {
             clampedXCoord--;
         }
-        auto xBottoms = (int32_t) ((uint32_t) clampedXCoord & 0xffu);
+        auto xBottoms = (uint16_t) ((uint32_t) clampedXCoord & 0xffu);
         xCoord -= clampedXCoord;
         double fadeX = xCoord * xCoord * xCoord * (xCoord * (xCoord * 6.0 - 15.0) + 10.0);
         for (int Z = 0; Z < sizeZ; Z++) {
@@ -469,13 +460,17 @@ static inline void generateFixedPermutations(double **buffer, double x, double z
             if (zCoord < (double) clampedZCoord) {
                 clampedZCoord--;
             }
-            auto zBottoms = (int32_t) ((uint32_t) clampedZCoord & 0xffu);
+            auto zBottoms = (uint16_t) ((uint32_t) clampedZCoord & 0xffu);
             zCoord -= clampedZCoord;
             double fadeZ = zCoord * zCoord * zCoord * (zCoord * (zCoord * 6.0 - 15.0) + 10.0);
-            int hashXZ = permutations[permutations[xBottoms]] + zBottoms;
-            int hashOffXZ = permutations[permutations[xBottoms + 1]] + zBottoms;
-            double x1 = lerp(fadeX, grad2D(permutations[hashXZ], xCoord, zCoord), grad2D(permutations[hashOffXZ], xCoord - 1.0, zCoord));
-            double x2 = lerp(fadeX, grad2D(permutations[hashXZ + 1], xCoord, zCoord - 1.0), grad2D(permutations[hashOffXZ + 1], xCoord - 1.0, zCoord - 1.0));
+            uint16_t hhxz = ((permutations[permutations[xBottoms] & 0xffu] & 0xffu) + zBottoms) & 0xffu;
+            uint16_t hhx1z = ((permutations[permutations[(xBottoms + 1u) & 0xffu] & 0xffu] & 0xffu) + zBottoms) & 0xffu;
+            uint16_t Hhhxz = permutations[hhxz & 0xffu];
+            uint16_t Hhhx1z = permutations[hhx1z & 0xffu];
+            uint16_t Hhhxz1 = permutations[(hhxz + 1u) & 0xffu];
+            uint16_t Hhhx1z1 = permutations[(hhx1z + 1u) & 0xffu];
+            double x1 = lerp(fadeX, grad2D(Hhhxz, xCoord, zCoord), grad2D(Hhhx1z, xCoord - 1.0, zCoord));
+            double x2 = lerp(fadeX, grad2D(Hhhxz1, xCoord, zCoord - 1.0), grad2D(Hhhx1z1, xCoord - 1.0, zCoord - 1.0));
             double y1 = lerp(fadeZ, x1, x2);
             (*buffer)[index] = (*buffer)[index] + y1 * octaveWidth;
             index++;
@@ -531,10 +526,10 @@ static inline void generateNormalPermutations(double **buffer, double x, double 
 
                 if (Y == 0 || yBottoms != i2) { // this is wrong on so many levels, same ybottoms doesnt mean x and z were the same...
                     i2 = yBottoms;
-                    uint16_t k2 = permutations[permutations[xBottoms] + yBottoms] + zBottoms;
-                    uint16_t l2 = permutations[permutations[xBottoms] + yBottoms + 1] + zBottoms;
-                    uint16_t k3 = permutations[permutations[xBottoms + 1] + yBottoms] + zBottoms;
-                    uint16_t l3 = permutations[permutations[xBottoms + 1] + yBottoms + 1] + zBottoms;
+                    uint16_t k2 = permutations[permutations[xBottoms& 0xffu] + yBottoms] + zBottoms;
+                    uint16_t l2 = permutations[permutations[xBottoms& 0xffu] + yBottoms + 1] + zBottoms;
+                    uint16_t k3 = permutations[permutations[(xBottoms + 1)& 0xffu] + yBottoms] + zBottoms;
+                    uint16_t l3 = permutations[permutations[(xBottoms + 1)& 0xffu] + yBottoms + 1] + zBottoms;
                     x1 = lerp(fadeX, grad(permutations[k2], xCoord, yCoords, zCoord), grad(permutations[k3], xCoord - 1.0, yCoords, zCoord));
                     x2 = lerp(fadeX, grad(permutations[l2], xCoord, yCoords - 1.0, zCoord), grad(permutations[l3], xCoord - 1.0, yCoords - 1.0, zCoord));
                     xx1 = lerp(fadeX, grad(permutations[k2 + 1], xCoord, yCoords, zCoord - 1.0), grad(permutations[k3 + 1], xCoord - 1.0, yCoords, zCoord - 1.0));
@@ -844,9 +839,8 @@ static void printHeights(uint64_t worldSeed, int32_t chunkX, int32_t chunkZ) {
 }
 
 
-void filterDownSeeds(const uint64_t *worldSeeds, int32_t posX, uint64_t nbSeeds) {
+void filterDownSeeds(const uint64_t *worldSeeds, int32_t chunkX, uint64_t nbSeeds) {
     uint8_t mapWat[] = {77, 78, 77, 75}; // from z 12 to z15 in chunk
-    int chunkX = (int32_t) ((posX + 16u) >> 4u) - 1;
     int chunkZ = -3;
     for (uint64_t i = 0; i < nbSeeds; ++i) {
         uint64_t seed = worldSeeds[i];
@@ -874,13 +868,37 @@ void filterDownSeeds(const uint64_t *worldSeeds, int32_t posX, uint64_t nbSeeds)
 
             }
             if (flag) {
-                std::cout << "Found seed: " << seed << " at x: " << posX << " and z:-30" << std::endl;
+                std::cout << "Found seed: " << seed << " at x(relative): " << chunkX * 16 + 8 << " and z: -30" << std::endl;
             }
         }
         delete[] chunkHeights;
         delete_biome_result(biomeResult);
     }
 
+}
+
+std::istream &safeGetline(std::istream &is, std::string &t) {
+    t.clear();
+    std::istream::sentry se(is, true);
+    std::streambuf *sb = is.rdbuf();
+    for (;;) {
+        int c = sb->sbumpc();
+        switch (c) {
+            case '\n':
+                return is;
+            case '\r':
+                if (sb->sgetc() == '\n')
+                    sb->sbumpc();
+                return is;
+            case std::streambuf::traits_type::eof():
+                // Also handle the case when the last line has no line ending
+                if (t.empty())
+                    is.setstate(std::ios::eofbit);
+                return is;
+            default:
+                t += (char) c;
+        }
+    }
 }
 
 int main(int argc, char *argv[]) {
@@ -891,12 +909,12 @@ int main(int argc, char *argv[]) {
     }
     uint64_t length = std::count(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>(), '\n');
     file.seekg(file.beg);
-    auto *worldSeeds = new uint64_t[length];
+    auto *worldSeeds = new uint64_t[length + 1];
     std::string line;
     size_t sz;
     uint64_t seed;
     uint64_t index = 0;
-    while (std::getline(file, line).good()) {
+    while (safeGetline(file, line).good()) {
         errno = 0;
         try {
             seed = std::stoull(line, &sz, 10);
@@ -915,11 +933,14 @@ int main(int argc, char *argv[]) {
         worldSeeds[index++] = seed;
     }
     file.close();
-    std::cout << "Running " << length << " seeds" << std::endl;
+    std::cout << "Running " << length + 1 << " seeds" << std::endl;
     auto start = std::chrono::high_resolution_clock::now();
-    filterDownSeeds(worldSeeds, 99, length);
+    filterDownSeeds(worldSeeds, 6, length);
     auto finish = std::chrono::high_resolution_clock::now();
-    std::cout << std::chrono::duration_cast<std::chrono::nanoseconds>(finish - start).count() / 1e9 << " s\n";
+    uint64_t time = std::chrono::duration_cast<std::chrono::nanoseconds>(finish - start).count() / 1e9;
+    std::cout << time << " s\n";
+    std::cout << "Checked " << (length + 1) * 16 << " couple coordinates/seed or " << (length + 1) * 16 / time << " seedCoords/s" << std::endl;
+
     delete[] worldSeeds;
 }
 
