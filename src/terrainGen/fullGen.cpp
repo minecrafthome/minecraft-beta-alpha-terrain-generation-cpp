@@ -54,7 +54,7 @@ struct PermutationTable {
     double xo;
     double yo;
     double zo; // this actually never used in fixed noise aka 2d noise;)
-    uint8_t permutations[512];
+    uint8_t permutations[256];
 };
 
 static inline void initOctaves(PermutationTable octaves[], Random *random, int nbOctaves) {
@@ -76,7 +76,6 @@ static inline void initOctaves(PermutationTable octaves[], Random *random, int n
                 permutations[randomIndex] ^= permutations[index];
                 permutations[index] ^= permutations[randomIndex];
             }
-            permutations[index + 256] = permutations[index];
         } while (index++ != 255);
     }
 }
@@ -195,11 +194,11 @@ static inline void simplexNoise(double **buffer, double chunkX, double chunkZ, i
             double y2 = (y0 - 1.0) + 2.0 * G2;
 
             // Work out the hashed gradient indices of the three simplex corners
-            uint32_t ii = (uint32_t) xHairy & 0xffu;
-            uint32_t jj = (uint32_t) zHairy & 0xffu;
-            uint8_t gi0 = permutations[(uint16_t) (ii + permutations[jj]) & 0xffu] % 12u;
-            uint8_t gi1 = permutations[(uint16_t) (ii + offsetSecondCornerX + permutations[(uint16_t) (jj + offsetSecondCornerZ) & 0xffu]) & 0xffu] % 12u;
-            uint8_t gi2 = permutations[(uint16_t) (ii + 1 + permutations[(uint16_t) (jj + 1) & 0xffu]) & 0xffu] % 12u;
+            uint8_t ii = (uint8_t) xHairy & 0xffu;
+            uint8_t jj = (uint8_t) zHairy & 0xffu;
+            uint8_t gi0 = permutations[(uint8_t) (ii + permutations[jj]) & 0xffu] % 12u;
+            uint8_t gi1 = permutations[(uint8_t) (ii + offsetSecondCornerX + permutations[(uint8_t) (jj + offsetSecondCornerZ) & 0xffu]) & 0xffu] % 12u;
+            uint8_t gi2 = permutations[(uint8_t) (ii + 1 + permutations[(uint8_t) (jj + 1) & 0xffu]) & 0xffu] % 12u;
 
             // Calculate the contribution from the three corners
             double t0 = 0.5 - x0 * x0 - y0 * y0;
@@ -424,14 +423,14 @@ static inline void generatePermutations(double **buffer, double x, double y, dou
 
             if (Y == 0 || yBottoms != i2) { // this is wrong on so many levels, same ybottoms doesnt mean x and z were the same...
                 i2 = yBottoms;
-                uint16_t k2 = permutations[permutations[xBottoms] + yBottoms] + zBottoms;
-                uint16_t l2 = permutations[permutations[xBottoms] + yBottoms + 1] + zBottoms;
-                uint16_t k3 = permutations[permutations[xBottoms + 1] + yBottoms] + zBottoms;
-                uint16_t l3 = permutations[permutations[xBottoms + 1] + yBottoms + 1] + zBottoms;
-                x1 = lerp(fadeX, grad(permutations[k2], xCoord, yCoords, zCoord), grad(permutations[k3], xCoord - 1.0, yCoords, zCoord));
-                x2 = lerp(fadeX, grad(permutations[l2], xCoord, yCoords - 1.0, zCoord), grad(permutations[l3], xCoord - 1.0, yCoords - 1.0, zCoord));
-                xx1 = lerp(fadeX, grad(permutations[k2 + 1], xCoord, yCoords, zCoord - 1.0), grad(permutations[k3 + 1], xCoord - 1.0, yCoords, zCoord - 1.0));
-                xx2 = lerp(fadeX, grad(permutations[l2 + 1], xCoord, yCoords - 1.0, zCoord - 1.0), grad(permutations[l3 + 1], xCoord - 1.0, yCoords - 1.0, zCoord - 1.0));
+                uint16_t k2 = permutations[(uint8_t)((uint16_t)(permutations[(uint8_t)(xBottoms& 0xffu)] + yBottoms)& 0xffu)] + zBottoms;
+                uint16_t l2 = permutations[(uint8_t)((uint16_t)(permutations[(uint8_t)(xBottoms& 0xffu)] + yBottoms + 1)& 0xffu)] + zBottoms;
+                uint16_t k3 = permutations[(uint8_t)((uint16_t)(permutations[(uint8_t)((xBottoms + 1u)& 0xffu)] + yBottoms)& 0xffu)] + zBottoms;
+                uint16_t l3 = permutations[(uint8_t)((uint16_t)(permutations[(uint8_t)((xBottoms + 1u)& 0xffu)] + yBottoms + 1)& 0xffu)] + zBottoms;
+                x1 = lerp(fadeX, grad(permutations[(uint8_t)(k2& 0xffu)], xCoord, yCoords, zCoord), grad(permutations[(uint8_t)(k3& 0xffu)], xCoord - 1.0, yCoords, zCoord));
+                x2 = lerp(fadeX, grad(permutations[(uint8_t)(l2& 0xffu)], xCoord, yCoords - 1.0, zCoord), grad(permutations[(uint8_t)(l3& 0xffu)], xCoord - 1.0, yCoords - 1.0, zCoord));
+                xx1 = lerp(fadeX, grad(permutations[(uint8_t)((k2+1u)& 0xffu)], xCoord, yCoords, zCoord - 1.0), grad(permutations[(uint8_t)((k3+1u)& 0xffu)], xCoord - 1.0, yCoords, zCoord - 1.0));
+                xx2 = lerp(fadeX, grad(permutations[(uint8_t)((l2+1u)& 0xffu)], xCoord, yCoords - 1.0, zCoord - 1.0), grad(permutations[(uint8_t)((l3+1u)& 0xffu)], xCoord - 1.0, yCoords - 1.0, zCoord - 1.0));
             }
             double y1 = lerp(fadeY, x1, x2);
             double y2 = lerp(fadeY, xx1, xx2);
@@ -526,14 +525,14 @@ static inline void generateNormalPermutations(double **buffer, double x, double 
 
                 if (Y == 0 || yBottoms != i2) { // this is wrong on so many levels, same ybottoms doesnt mean x and z were the same...
                     i2 = yBottoms;
-                    uint16_t k2 = permutations[permutations[xBottoms& 0xffu] + yBottoms] + zBottoms;
-                    uint16_t l2 = permutations[permutations[xBottoms& 0xffu] + yBottoms + 1] + zBottoms;
-                    uint16_t k3 = permutations[permutations[(xBottoms + 1)& 0xffu] + yBottoms] + zBottoms;
-                    uint16_t l3 = permutations[permutations[(xBottoms + 1)& 0xffu] + yBottoms + 1] + zBottoms;
-                    x1 = lerp(fadeX, grad(permutations[k2], xCoord, yCoords, zCoord), grad(permutations[k3], xCoord - 1.0, yCoords, zCoord));
-                    x2 = lerp(fadeX, grad(permutations[l2], xCoord, yCoords - 1.0, zCoord), grad(permutations[l3], xCoord - 1.0, yCoords - 1.0, zCoord));
-                    xx1 = lerp(fadeX, grad(permutations[k2 + 1], xCoord, yCoords, zCoord - 1.0), grad(permutations[k3 + 1], xCoord - 1.0, yCoords, zCoord - 1.0));
-                    xx2 = lerp(fadeX, grad(permutations[l2 + 1], xCoord, yCoords - 1.0, zCoord - 1.0), grad(permutations[l3 + 1], xCoord - 1.0, yCoords - 1.0, zCoord - 1.0));
+                    uint16_t k2 = permutations[(uint8_t)((uint16_t)(permutations[(uint8_t)(xBottoms& 0xffu)] + yBottoms)& 0xffu)] + zBottoms;
+                    uint16_t l2 = permutations[(uint8_t)((uint16_t)(permutations[(uint8_t)(xBottoms& 0xffu)] + yBottoms + 1u )& 0xffu)] + zBottoms;
+                    uint16_t k3 = permutations[(uint8_t)((uint16_t)(permutations[(uint8_t)((xBottoms + 1u)& 0xffu)] + yBottoms )& 0xffu)] + zBottoms;
+                    uint16_t l3 = permutations[(uint8_t)((uint16_t)(permutations[(uint8_t)((xBottoms + 1u)& 0xffu)] + yBottoms + 1u) & 0xffu)] + zBottoms;
+                    x1 = lerp(fadeX, grad(permutations[(uint8_t)(k2& 0xffu)], xCoord, yCoords, zCoord), grad(permutations[(uint8_t)(k3& 0xffu)], xCoord - 1.0, yCoords, zCoord));
+                    x2 = lerp(fadeX, grad(permutations[(uint8_t)(l2& 0xffu)], xCoord, yCoords - 1.0, zCoord), grad(permutations[(uint8_t)(l3& 0xffu)], xCoord - 1.0, yCoords - 1.0, zCoord));
+                    xx1 = lerp(fadeX, grad(permutations[(uint8_t)((k2+1u)& 0xffu)], xCoord, yCoords, zCoord - 1.0), grad(permutations[(uint8_t)((k3+1u)& 0xffu)], xCoord - 1.0, yCoords, zCoord - 1.0));
+                    xx2 = lerp(fadeX, grad(permutations[(uint8_t)((l2+1u)& 0xffu)], xCoord, yCoords - 1.0, zCoord - 1.0), grad(permutations[(uint8_t)((l3+1u)& 0xffu)], xCoord - 1.0, yCoords - 1.0, zCoord - 1.0));
                 }
                 double y1 = lerp(fadeY, x1, x2);
                 double y2 = lerp(fadeY, xx1, xx2);
@@ -826,16 +825,6 @@ TerrainResult *TerrainWrapper(uint64_t worldSeed, int32_t chunkX, int32_t chunkZ
     terrainResult->biomeResult = biomeResult;
     terrainResult->chunkHeights = chunkHeights;
     return terrainResult;
-}
-
-static void printHeights(uint64_t worldSeed, int32_t chunkX, int32_t chunkZ) {
-    auto *terrainResult = TerrainWrapper(worldSeed, chunkX, chunkZ);
-    for (int x = 0; x < 16; ++x) {
-        for (int z = 0; z < 4; ++z) {
-            std::cout << (int) terrainResult->chunkHeights[x * 4 + z] << " ";
-        }
-        std::cout << std::endl;
-    }
 }
 
 
