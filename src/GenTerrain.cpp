@@ -289,7 +289,6 @@ static inline void fillNoiseColumn(double **NoiseColumn, int chunkX, int chunkZ,
     generateNoise(mainLimitPerlinNoise, chunkX, 0, chunkZ, cellSizeX, columnSize, cellSizeZ, noiseSize / 80, noiseSize / 160, noiseSize / 80, terrainNoises.mainLimit, 8);
     generateNoise(minLimitPerlinNoise, chunkX, 0, chunkZ, cellSizeX, columnSize, cellSizeZ, noiseSize, noiseSize, noiseSize, terrainNoises.minLimit, 16);
     generateNoise(maxLimitPerlinNoise, chunkX, 0, chunkZ, cellSizeX, columnSize, cellSizeZ, noiseSize, noiseSize, noiseSize, terrainNoises.maxLimit, 16);
-    int possibleCellCounter[10] = {3, 4, 8, 9, 13, 14, 18, 19, 23, 24};
     int index2d = 0;
     int index3d = 0;
     for (int cellX = 0; cellX < cellSizeX; ++cellX) {
@@ -575,14 +574,14 @@ uint8_t *TerrainHeights(uint64_t worldSeed, int32_t chunkX, int32_t chunkZ) {
 
 TerrainResult *TerrainWrapper(uint64_t worldSeed, int32_t chunkX, int32_t chunkZ) {
     auto *chunkCache = TerrainInternalWrapper(worldSeed, chunkX, chunkZ);
-    auto *chunkHeights = new uint8_t[4 * 16];
+    auto *chunkHeights = new uint8_t[16 * 16];
     for (int x = 0; x < 16; ++x) {
-        for (int z = 12; z < 16; ++z) {
+        for (int z = 0; z < 16; ++z) {
             int pos = 128 * x * 16 + 128 * z;
             int y;
-            for (y = 80; y >= 70 && chunkCache[pos + y] == 0; y--);
+            for (y = 128; y >= 0 && chunkCache[pos + y] == 0; y--);
             //std::cout<<(y + 1)<<" ";
-            chunkHeights[x * 4 + (z - 12)] = (y + 1);
+            chunkHeights[x * 16 + z] = y;
         }
         //std::cout<<std::endl;
     }
@@ -604,23 +603,24 @@ static void printHeights(uint64_t worldSeed, int32_t chunkX, int32_t chunkZ) {
 
 void filterDownSeeds(const uint64_t *worldSeeds, int32_t posX, int32_t posZ, int64_t nbSeeds) {
     uint8_t mapZ[] = {77, 78, 77, 75}; // from z 12 to z15 in chunk
-    int chunkX = (int32_t) ((uint32_t)posX >> 4u);
-    int chunkZ = (int32_t) ((uint32_t)posX >> 4u);;
+    int chunkX = (int32_t) ((uint32_t) posX >> 4u);
+    int chunkZ = (int32_t) ((uint32_t) posX >> 4u);;
     for (int i = 0; i < nbSeeds; ++i) {
         int64_t seed = worldSeeds[i];
         uint8_t *chunkCache = TerrainInternalWrapper(seed, chunkX, chunkZ);
+        if (i%10000==0){
+            std::cout<<i<<std::endl;
+        }
         for (int x = 0; x < 16; x++) {
             bool flag = true;
-            for (uint8_t z = 0; z < (uint8_t )(sizeof(mapZ)/sizeof(uint8_t)); z++) {
+            for (uint8_t z = 0; z < (uint8_t) (sizeof(mapZ) / sizeof(uint8_t)); z++) {
                 uint32_t pos = 128 * x * 16 + 128 * z;
                 uint32_t y;
-
-                for (y = 80; y >= 70 && chunkCache[pos + y] == 0; y--);
-                if ((y + 1) != mapZ[z]) {
+                for (y = 128; y >= 0 && chunkCache[pos + y] == 0; y--);
+                if (y != mapZ[z]) {
                     flag = false;
                     break;
                 }
-
             }
             if (flag) {
                 std::cout << "Found seed: " << seed << " at x: " << posX << " and z:-30" << std::endl;
@@ -648,6 +648,7 @@ int main(int argc, char *argv[]) {
     while (std::getline(file, line).good()) {
         errno = 0;
         try {
+            line.erase(std::remove(line.begin(), line.end(), '\r'), line.end());
             seed = std::stoull(line, &sz, 10);
             if (sz != line.size()) {
                 fprintf(stderr, "Size of parsed and size of line disagree, wrong type\n");
@@ -664,9 +665,9 @@ int main(int argc, char *argv[]) {
         worldSeeds[index++] = seed;
     }
     file.close();
-    std::cout << "Running " << length << " seeds" <<std::endl;
+    std::cout << "Running " << length << " seeds" << std::endl;
     auto start = std::chrono::high_resolution_clock::now();
-    filterDownSeeds(worldSeeds,0,0, length);
+    filterDownSeeds(worldSeeds, 0, 0, length);
     auto finish = std::chrono::high_resolution_clock::now();
     std::cout << std::chrono::duration_cast<std::chrono::nanoseconds>(finish - start).count() / 1e9 << " s\n";
     delete[] worldSeeds;
