@@ -3,6 +3,7 @@
 #include <fstream>
 #include <algorithm>
 #include <cstring>
+#include <sstream>
 
 static_assert(std::numeric_limits<double>::is_iec559, "This code requires IEEE-754 doubles");
 
@@ -13,6 +14,11 @@ static_assert(std::numeric_limits<double>::is_iec559, "This code requires IEEE-7
 #define RANDOM_SCALE 0x1.0p-53
 #define get_random(seed) ((Random)((seed ^ RANDOM_MULTIPLIER) & RANDOM_MASK))
 
+struct data {
+    uint64_t seed;
+    int32_t x;
+    int32_t z;
+};
 
 static inline int32_t random_next(Random *random, int bits) {
     *random = (*random * RANDOM_MULTIPLIER + RANDOM_ADDEND) & RANDOM_MASK;
@@ -475,22 +481,22 @@ static inline void replaceBlockForBiomes(int chunkX, int chunkZ, uint8_t **chunk
                     } else if (y >= oceanLevel - 4 && y <= oceanLevel + 1) { // if at sea level do the shore and rivers
                         upperBlock = GRASS;
                         lowerBlock = DIRT;
-                        if (gravelly) {
-                            upperBlock = 0;
-                        }
-                        if (gravelly) {
-                            lowerBlock = GRAVEL;
-                        }
-                        if (sandy) {
-                            upperBlock = SAND;
-                            lowerBlock = SAND;
-                        }
                     }
-                    state = elevation;
-                    if (y >= oceanLevel - 1) {
-                        (*chunkCache)[chunkCachePos] = upperBlock;
-                        continue;
+                    if (gravelly) {
+                        upperBlock = 0;
                     }
+                    if (gravelly) {
+                        lowerBlock = GRAVEL;
+                    }
+                    if (sandy) {
+                        upperBlock = SAND;
+                        lowerBlock = SAND;
+                    }
+                }
+                state = elevation;
+                if (y >= oceanLevel - 1) {
+                    (*chunkCache)[chunkCachePos] = upperBlock;
+                    continue;
                     (*chunkCache)[chunkCachePos] = upperBlock;
                     continue;
                 }
@@ -601,56 +607,150 @@ static void printHeights(uint64_t worldSeed, int32_t chunkX, int32_t chunkZ) {
     }
 }
 
-void filterDownSeeds(const uint64_t *worldSeeds, int32_t posX, int32_t posZ, int64_t nbSeeds) {
-    uint8_t mapZ[] = {77, 78, 77, 75}; // from z 12 to z15 in chunk
-    int chunkX = (int32_t) ((uint32_t) posX >> 4u);
-    int chunkZ = (int32_t) ((uint32_t) posX >> 4u);;
+#define MIN(a, b) (((a)<(b))?(a):(b))
+#define MAX(a, b) (((a)>(b))?(a):(b))
+
+void filterDownSeeds(const data *data, int32_t posX, int32_t posZ, int64_t nbSeeds) {
+
+
+#define OFFSET_X_PLUS 2
+#define OFFSET_X_NEG -2
+#define OFFSET_Z -17
+
+// X negative ->
+// Y, Y+1, Y+2, Y+3, Y+1
+    uint8_t mapX[] = {1, 2, 3, 1};
+
     for (int i = 0; i < nbSeeds; ++i) {
-        int64_t seed = worldSeeds[i];
-        uint8_t *chunkCache = TerrainInternalWrapper(seed, chunkX, chunkZ);
-        if (i%10000==0){
-            std::cout<<i<<std::endl;
+        uint8_t *chunkCache2 = nullptr;
+
+        bool shouldDoExtraChunkLower = false;
+        bool shoulDoExtraChunkUpper = false;
+        int64_t seed = data[i].seed;
+        int32_t chunkX = data[i].x / 16;
+        if (chunkX < 0) {
+            chunkX--;
         }
-        for (int x = 0; x < 16; x++) {
-            bool flag = true;
-            for (uint8_t z = 0; z < (uint8_t) (sizeof(mapZ) / sizeof(uint8_t)); z++) {
+        uint8_t chunkPosX = ((data[i].x % 16) + 16) % 16;
+        if (chunkPosX < OFFSET_X_PLUS - OFFSET_X_NEG + 1) { // 5 here
+            shouldDoExtraChunkLower = true;
+        }
+        if (chunkPosX > 16 - OFFSET_X_PLUS - OFFSET_X_NEG) { // 12 here
+            shoulDoExtraChunkUpper = true;
+        }
+        int32_t chunkZ = (data[i].z + OFFSET_Z) / 16;
+        uint8_t chunkPosZ = (((data[i].z + OFFSET_Z) % 16) + 16) % 16;
+        if (chunkZ < 0) {
+            chunkZ--;
+        }
+        uint8_t *chunkCache = TerrainInternalWrapper(seed, chunkX, chunkZ);
+        if (shouldDoExtraChunkLower) {
+            chunkCache2 = TerrainInternalWrapper(seed, chunkX - 1, chunkZ);
+        }
+        if (shoulDoExtraChunkUpper) {
+            chunkCache2 = TerrainInternalWrapper(seed, chunkX + 1, chunkZ);
+        }
+        if (i % 1000 == 0) {
+            std::cout << i << std::endl;
+        }
+        uint32_t lastY = 0;
+        int index = 0;
+        int count = 0;
+        uint8_t z = chunkPosZ; // fixed Z
+        uint32_t diff;
+        if (shouldDoExtraChunkLower) {
+            for (uint8_t x = chunkPosX + OFFSET_X_NEG + 16; x <= 15u; x++) {
                 uint32_t pos = 128 * x * 16 + 128 * z;
                 uint32_t y;
-                for (y = 128; y >= 0 && chunkCache[pos + y] == 0; y--);
-                if (y != mapZ[z]) {
-                    flag = false;
-                    break;
+
+                for (y = 128; y >= 0 && chunkCache2[pos + y] == 0; y--);
+                if (lastY == 0) {
+                    lastY = y;
+                } else {
+                    diff = lastY - y;
+                    if (diff == mapX[index++]) {
+                        count++;
+                    }
                 }
             }
-            if (flag) {
-                std::cout << "Found seed: " << seed << " at x: " << posX << " and z:-30" << std::endl;
+        }
+        // making sure to clamp to the main chunk
+        for (uint8_t x = MAX(chunkPosX + OFFSET_X_NEG, 0); x <= MIN((uint8_t) (chunkPosX + OFFSET_X_PLUS), (uint8_t) 15u); x++) {
+            uint32_t pos = 128 * x * 16 + 128 * z;
+            uint32_t y;
+            for (y = 128; y >= 0 && chunkCache[pos + y] == 0; y--);
+            if (lastY == 0) {
+                lastY = y;
+            } else {
+                diff = lastY - y;
+                if (diff == mapX[index++]) {
+                    count++;
+                }
+            }
+
+        }
+        if (shoulDoExtraChunkUpper) {
+            for (uint8_t x = 0; x <= (uint8_t) (chunkPosX + OFFSET_X_PLUS - 16u); x++) {
+                uint32_t pos = 128 * x * 16 + 128 * z;
+                uint32_t y;
+                for (y = 128; y >= 0 && chunkCache2[pos + y] == 0; y--);
+                if (lastY == 0) {
+                    lastY = y;
+                } else {
+                    diff = lastY - y;
+                    if (diff == mapX[index++]) {
+                        count++;
+                    }
+                }
             }
         }
+
+        if (count >= 1) {
+            std::cout << "Found seed: " <<  data->seed << " at x: " << data->x << " and z:" << data->z <<std::endl;
+        }
         delete[] chunkCache;
+        delete[] chunkCache2;
+
     }
 
 }
 
 int main(int argc, char *argv[]) {
 
-    std::ifstream file("test.txt");
+    std::ifstream file("seeds.csv");
     if (!file.is_open()) {
         std::cout << "file was not loaded" << std::endl;
         throw std::runtime_error("file was not loaded");
     }
     int64_t length = std::count(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>(), '\n');
     file.seekg(file.beg);
-    auto *worldSeeds = new uint64_t[length];
+    auto *worldSeeds = new data[length];
     std::string line;
     size_t sz;
-    int64_t seed;
+    uint64_t seed;
+    int32_t x;
+    int32_t z;
     int64_t index = 0;
+    std::string token;
+    size_t sum_sz;
+    auto start_file = std::chrono::steady_clock::now();
+
     while (std::getline(file, line).good()) {
+        line.erase(std::remove(line.begin(), line.end(), '\r'), line.end());
         errno = 0;
+        std::stringstream s_stream(line);
+        sum_sz = -1;
         try {
-            line.erase(std::remove(line.begin(), line.end(), '\r'), line.end());
-            seed = std::stoull(line, &sz, 10);
-            if (sz != line.size()) {
+            getline(s_stream, token, ',');
+            seed = std::stoull(token, &sz, 10);
+            sum_sz += sz + 1;
+            getline(s_stream, token, ',');
+            x = std::stoul(token, &sz, 10);
+            sum_sz += sz + 1;
+            getline(s_stream, token, ',');
+            z = std::stoul(token, &sz, 10);
+            sum_sz += sz + 1;
+            if (sum_sz != line.size()) {
                 fprintf(stderr, "Size of parsed and size of line disagree, wrong type\n");
                 exit(EXIT_FAILURE);
             }
@@ -662,8 +762,14 @@ int main(int argc, char *argv[]) {
             std::cout << "Out of range" << std::endl;
             exit(EXIT_FAILURE);
         }
-        worldSeeds[index++] = seed;
+        worldSeeds[index].seed = seed;
+        worldSeeds[index].x = x;
+        worldSeeds[index].z = z;
+        index++;
     }
+    auto end_file = std::chrono::steady_clock::now();
+    std::chrono::duration<double> elapsed_seconds = end_file - start_file;
+    std::cout << "Took  " << elapsed_seconds.count() << "s to parse the file\n";
     file.close();
     std::cout << "Running " << length << " seeds" << std::endl;
     auto start = std::chrono::high_resolution_clock::now();

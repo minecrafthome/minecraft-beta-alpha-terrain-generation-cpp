@@ -657,3 +657,4 @@ MigrationBackup/
 .ionide/
 
 # End of https://www.toptal.com/developers/gitignore/api/c++,c,cuda,clion+all,clion+iml,clion,visualstudio,visualstudiocode
+src/seeds.csv
