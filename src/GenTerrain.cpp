@@ -619,7 +619,7 @@ void filterDownSeeds(const data *data, int32_t posX, int32_t posZ, int64_t nbSee
 
 // X negative ->
 // Y, Y+1, Y+2, Y+3, Y+1
-    uint8_t mapX[] = {1, 2, 3, 1};
+    int8_t mapX[] = {-1,0,0,-1};
 
     for (int i = 0; i < nbSeeds; ++i) {
         uint8_t *chunkCache2 = nullptr;
@@ -657,7 +657,7 @@ void filterDownSeeds(const data *data, int32_t posX, int32_t posZ, int64_t nbSee
         int index = 0;
         int count = 0;
         uint8_t z = chunkPosZ; // fixed Z
-        uint32_t diff;
+        int32_t diff;
         if (shouldDoExtraChunkLower) {
             for (uint8_t x = chunkPosX + OFFSET_X_NEG + 16; x <= 15u; x++) {
                 uint32_t pos = 128 * x * 16 + 128 * z;
@@ -722,58 +722,30 @@ int main(int argc, char *argv[]) {
         std::cout << "file was not loaded" << std::endl;
         throw std::runtime_error("file was not loaded");
     }
-    int64_t length = std::count(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>(), '\n');
-    file.seekg(file.beg);
-    auto *worldSeeds = new data[length];
-    std::string line;
-    size_t sz;
-    uint64_t seed;
-    int32_t x;
-    int32_t z;
-    int64_t index = 0;
-    std::string token;
-    size_t sum_sz;
-    auto start_file = std::chrono::steady_clock::now();
 
-    while (std::getline(file, line).good()) {
-        line.erase(std::remove(line.begin(), line.end(), '\r'), line.end());
-        errno = 0;
-        std::stringstream s_stream(line);
-        sum_sz = -1;
-        try {
-            getline(s_stream, token, ',');
-            seed = std::stoull(token, &sz, 10);
-            sum_sz += sz + 1;
-            getline(s_stream, token, ',');
-            x = std::stoul(token, &sz, 10);
-            sum_sz += sz + 1;
-            getline(s_stream, token, ',');
-            z = std::stoul(token, &sz, 10);
-            sum_sz += sz + 1;
-            if (sum_sz != line.size()) {
-                fprintf(stderr, "Size of parsed and size of line disagree, wrong type\n");
-                exit(EXIT_FAILURE);
-            }
-        } catch (const std::invalid_argument &) {
-            std::cout << "Error conversion" << std::endl;
-            perror("strtol");
-            exit(EXIT_FAILURE);
-        } catch (const std::out_of_range &) {
-            std::cout << "Out of range" << std::endl;
-            exit(EXIT_FAILURE);
-        }
-        worldSeeds[index].seed = seed;
-        worldSeeds[index].x = x;
-        worldSeeds[index].z = z;
-        index++;
+    auto start_file = std::chrono::steady_clock::now();
+    int64_t startValue  = 1282613228000;
+    int64_t total       = 1282706397225;
+    int64_t amount = total - startValue;
+    auto *worldSeeds = new data[amount];
+    int64_t hardcoded = 8682522807148012LL * 181783497276652981LL;
+    for(int64_t offset = 0; offset < amount; offset++){
+        int64_t value = startValue + offset;
+        value *=1000;
+        int64_t xorValue = hardcoded ^ value;
+        worldSeeds[offset].seed = xorValue^RANDOM_MULTIPLIER;
+        worldSeeds[offset].x = x;
+        worldSeeds[offset].z = z;
+
     }
+
     auto end_file = std::chrono::steady_clock::now();
     std::chrono::duration<double> elapsed_seconds = end_file - start_file;
     std::cout << "Took  " << elapsed_seconds.count() << "s to parse the file\n";
     file.close();
-    std::cout << "Running " << length << " seeds" << std::endl;
+    std::cout << "Running " << amount << " seeds" << std::endl;
     auto start = std::chrono::high_resolution_clock::now();
-    filterDownSeeds(worldSeeds, 0, 0, length);
+    filterDownSeeds(worldSeeds, 0, 0, amount);
     auto finish = std::chrono::high_resolution_clock::now();
     std::cout << std::chrono::duration_cast<std::chrono::nanoseconds>(finish - start).count() / 1e9 << " s\n";
     delete[] worldSeeds;
